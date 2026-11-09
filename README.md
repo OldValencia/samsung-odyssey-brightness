@@ -32,7 +32,7 @@ The monitor does **not** need internet access; LAN access is enough.
   Bind these to any key or macro tool.
 - **Start with Windows**: one checkbox in the tray menu.
 - **Light on resources**: a single native exe (C++ / Win32, no frameworks or runtimes).
-  It uses about 4 MB of RAM and no CPU while idle.
+  It uses about 4 MB of RAM and no CPU while idle (see [Resource usage](#resource-usage)).
 - **Responsive**: keeps the HTTPS connection alive, merges fast key presses, never blocks the UI.
 
 ## Tested with
@@ -40,6 +40,10 @@ The monitor does **not** need internet access; LAN access is enough.
 | Monitor | Model code | Firmware |
 |---|---|---|
 | Samsung Odyssey OLED G8 (G85SB), 34" | LS34BG850SUXEN | 1720 |
+
+| Keyboard | Connection | Result |
+|---|---|---|
+| Logitech MX Keys S, Logi Options+ running | Bolt receiver | Works (HID++ diverted keys) |
 
 Other Tizen-based Samsung monitors with "IP Remote" will probably work too. The brightness range
 may differ; set `BRIGHTNESS_MAX` accordingly. Reports are welcome.
@@ -60,14 +64,22 @@ may differ; set `BRIGHTNESS_MAX` accordingly. Reports are welcome.
 
 ## Keyboard
 
-The app listens for the standard HID brightness keys (*Consumer* page `0x0C`,
-usages `0x6F` Brightness Increment and `0x70` Brightness Decrement) with Windows Raw Input.
-No keyboard hooks are installed and no special rights are needed.
+The app reads keyboard input with Windows Raw Input. It installs no keyboard hooks and needs no special
+rights. It recognizes brightness keys in two ways:
+
+1. **Standard HID keys** (*Consumer* page `0x0C`, usages `0x6F` Brightness Increment and
+   `0x70` Brightness Decrement). Most keyboards send these.
+2. **Logitech keyboards with Logi Options+** (tested: MX Keys S on a Bolt receiver). Options+
+   *diverts* the special keys: the keyboard then sends Logitech HID++ notifications
+   (feature `REPROG_CONTROLS_V4`, control IDs `0x00C7` Brightness Down and `0x00C8` Brightness Up)
+   instead of standard codes. The app asks each Logitech keyboard once where this feature is and
+   then listens for those notifications. Receivers (Bolt, Unifying) and Bluetooth are supported.
+
+What to do:
 
 - **Most keyboards**: nothing to configure. Press the brightness keys.
 - **Logitech keyboards with Logi Options+**: keep the brightness keys on their default action
-  (*Brightness up / down*). If a key is assigned a custom action, Options+ handles it itself and
-  the standard key code never reaches Windows.
+  (*Brightness up / down*). If a key gets a custom action, the app does not see it.
 - **Keyboards without brightness keys**, or keys that send something else: bind any key in your
   keyboard software (Logi Options+, a macro tool, AutoHotkey...) to run
   `SamsungBrightness.exe up` and `SamsungBrightness.exe down`. Each call passes the command to the
@@ -104,6 +116,7 @@ SamsungBrightness.exe exit       close the running instance
 
 ```text
 Keyboard brightness key ──(HID 0x0C/0x6F, 0x70)──► Raw Input ─┐
+Logitech + Options+ ──(HID++ CID 0x00C7, 0x00C8)──► Raw Input ─┤
 SamsungBrightness.exe up/down ──(WM_COPYDATA)─────────────────┤
 Tray menu ────────────────────────────────────────────────────┤
                                                                ▼
@@ -125,6 +138,24 @@ Protocol example (`POST https://<monitor-ip>:1516/`, headers `Content-Type` and 
 ```
 
 Without `"backlight"` the method only reads the current value. `createAccessToken` (no params) starts pairing.
+
+## Resource usage
+
+Measured on Windows 11 (x64) after 5 minutes of use, including key presses and tray menu use:
+
+| Metric | Value |
+|---|---|
+| RAM, as shown in Task Manager (private working set) | **3.8 MB** |
+| Committed memory (private bytes) | 4.5 MB |
+| CPU while idle (measured over 60 s) | **0 ms** |
+| CPU in total for 5 minutes of use | 0.34 s |
+| Threads | 7 (2 own, the rest are Windows networking thread pool) |
+| Executable size | 835 KB, no dependencies |
+
+While idle, the app does no polling and has no timers. It sleeps until a key press, a tray click or
+a command arrives. Most of the remaining memory belongs to Windows components every tray app with
+HTTPS needs (the notification area API, WinHTTP and the TLS stack). The app's own data is a few
+kilobytes.
 
 ## Security notes
 
@@ -163,7 +194,8 @@ Project layout:
 | `src/brightness_worker.*` | Background thread for network calls, request merging |
 | `src/samsung_client.*` | Samsung IP Control client (WinHTTP) |
 | `src/json_rpc.*` | Minimal JSON-RPC helpers |
-| `src/key_listener.*` | Raw Input listener for HID brightness keys |
+| `src/consumer_key_listener.*` | Standard HID brightness keys (Raw Input) |
+| `src/logitech_key_listener.*` | Logitech HID++ brightness keys diverted by Logi Options+ |
 | `src/osd_window.*` | On-screen display |
 | `src/tray_icon.*`, `src/tray_menu.*` | Notification area icon and menu |
 | `src/config.*`, `src/paths.*` | `.env` settings |

@@ -17,9 +17,10 @@ add_executable(SamsungBrightness WIN32
     src/brightness_worker.cpp
     src/command_line.cpp
     src/config.cpp
+    src/consumer_key_listener.cpp
     src/json_rpc.cpp
-    src/key_listener.cpp
     src/log.cpp
+    src/logitech_key_listener.cpp
     src/osd_window.cpp
     src/pairing.cpp
     src/paths.cpp

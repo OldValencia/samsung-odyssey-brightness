@@ -1,9 +1,11 @@
 #pragma once
 
 #include "brightness_controller.h"
+#include "brightness_key.h"
 #include "command_line.h"
 #include "config.h"
-#include "key_listener.h"
+#include "consumer_key_listener.h"
+#include "logitech_key_listener.h"
 #include "osd_window.h"
 #include "tray_icon.h"
 #include "tray_menu.h"
@@ -12,6 +14,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 struct PairingResult;
 
@@ -32,7 +35,9 @@ private:
     bool CreateMainWindow();
 
     // Keys (app.cpp)
+    void RegisterKeyListeners();
     void OnRawInput(HRAWINPUT input);
+    void OnInputDeviceChange(WPARAM change, HANDLE device);
     void OnBrightnessKey(BrightnessKey key, bool pressed);
     void OnRepeatTimer();
     void StepFor(BrightnessKey key);
@@ -59,7 +64,11 @@ private:
     Config config_;
     OsdWindow osd_;
     BrightnessController brightness_;
-    BrightnessKeyListener keyListener_;
+    // Standard HID brightness keys of any keyboard.
+    ConsumerKeyListener consumerKeys_;
+    // Brightness keys of Logitech keyboards while Logi Options+ is running.
+    LogitechKeyListener logitechKeys_;
+    std::vector<BYTE> rawInputBuffer_;
     TrayIcon tray_;
 
     // The brightness key that is held down, for auto-repeat.

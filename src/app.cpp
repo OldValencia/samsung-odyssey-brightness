@@ -2,6 +2,7 @@
 
 #include "app_constants.h"
 #include "log.h"
+#include "raw_input.h"
 #include "resource.h"
 #include "win_util.h"
 
@@ -36,11 +37,9 @@ bool App::Initialize()
                                           iconSize, iconSize, LR_DEFAULTCOLOR));
     tray_.Add(window_, icon_);
 
-    if (!keyListener_.Register(window_)) {
-        logging::Write(L"Cannot listen for brightness keys (error %lu)", GetLastError());
-    }
-
+    // Settings first: they decide whether the key listeners log their findings.
     LoadSettings();
+    RegisterKeyListeners();
     CheckSettings();
     return true;
 }
@@ -111,7 +110,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         OnRawInput(reinterpret_cast<HRAWINPUT>(lParam));
         break;  // DefWindowProc must still run for WM_INPUT
     case WM_INPUT_DEVICE_CHANGE:
-        keyListener_.HandleDeviceChange(wParam, reinterpret_cast<HANDLE>(lParam));
+        OnInputDeviceChange(wParam, reinterpret_cast<HANDLE>(lParam));
         return 0;
     case WM_TIMER:
         if (wParam == kRepeatTimer) {
@@ -153,9 +152,32 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     return DefWindowProcW(window_, message, wParam, lParam);
 }
 
+void App::RegisterKeyListeners()
+{
+    if (!consumerKeys_.Register(window_)) {
+        logging::Write(L"Cannot listen for standard brightness keys (error %lu)", GetLastError());
+    }
+    if (!logitechKeys_.Register(window_)) {
+        logging::Write(L"Cannot listen for Logitech brightness keys (error %lu)", GetLastError());
+    }
+}
+
 void App::OnRawInput(HRAWINPUT input)
 {
-    keyListener_.HandleInput(input, [this](BrightnessKey key, bool pressed) { OnBrightnessKey(key, pressed); });
+    const auto* raw = ReadRawInput(input, rawInputBuffer_);
+    if (raw == nullptr) {
+        return;
+    }
+
+    auto onKey = [this](BrightnessKey key, bool pressed) { OnBrightnessKey(key, pressed); };
+    consumerKeys_.HandleInput(*raw, onKey);
+    logitechKeys_.HandleInput(*raw, onKey);
+}
+
+void App::OnInputDeviceChange(WPARAM change, HANDLE device)
+{
+    consumerKeys_.HandleDeviceChange(change, device);
+    logitechKeys_.HandleDeviceChange(change, device);
 }
 
 void App::OnBrightnessKey(BrightnessKey key, bool pressed)
