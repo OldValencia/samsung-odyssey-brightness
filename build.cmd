@@ -3,6 +3,10 @@ setlocal
 
 rem Builds build\SamsungBrightness.exe (Release, x64) with the Visual Studio C++ tools.
 rem Requires Visual Studio 2022 or newer with the "Desktop development with C++" workload.
+rem Usage: build.cmd [version]   e.g. build.cmd 1.2.0
+
+set "VERSION_ARG="
+if not "%~1"=="" set "VERSION_ARG=-DAPP_VERSION=%~1"
 
 rem vcvars needs the standard Windows tools (findstr, reg) and vswhere on PATH.
 set "VS_INSTALLER=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer"
@@ -18,7 +22,7 @@ if not defined VS_PATH (
 
 call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 
-cmake -S "%~dp0." -B "%~dp0build" -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+cmake -S "%~dp0." -B "%~dp0build" -G Ninja -DCMAKE_BUILD_TYPE=Release %VERSION_ARG% || exit /b 1
 cmake --build "%~dp0build" || exit /b 1
 
 echo.

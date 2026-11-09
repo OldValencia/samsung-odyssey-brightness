@@ -1,0 +1,84 @@
+# Builds the app and the installer for every push and pull request.
+# Pushing a version tag (e.g. v1.2.0) also publishes a GitHub Release with the files.
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+              $version = $env:GITHUB_REF_NAME.TrimStart('v')
+              if ($version -notmatch '^\d+\.\d+\.\d+$') {
+                  throw "Release tags must look like v1.2.3, got '$env:GITHUB_REF_NAME'"
+              }
+          } else {
+              $version = '1.0.0'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build exe
+        shell: cmd
+        run: build.cmd ${{ steps.version.outputs.version }}
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+              choco install innosetup --yes --no-progress
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Qp "/DAppVersion=${{ steps.version.outputs.version }}" installer\SamsungBrightness.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+
+      - name: Build portable zip
+        shell: pwsh
+        run: |
+          $files = 'build\SamsungBrightness.exe', '.env.example', 'README.md', 'LICENSE'
+          Compress-Archive -Path $files -DestinationPath "dist\SamsungBrightness-${{ steps.version.outputs.version }}-portable.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SamsungBrightness-${{ steps.version.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Samsung Brightness ${GITHUB_REF_NAME}" \
+            --generate-notes

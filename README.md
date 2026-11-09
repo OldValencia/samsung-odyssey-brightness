@@ -53,8 +53,13 @@ may differ; set `BRIGHTNESS_MAX` accordingly. Reports are welcome.
 1. **On the monitor**: connect it to your network and enable **IP Remote** in its settings.
 2. **In your router** *(recommended)*: reserve a fixed IP address for the monitor (DHCP reservation),
    so the address does not change.
-3. **Install**: put `SamsungBrightness.exe` into any folder, for example
-   `%LOCALAPPDATA%\Programs\SamsungBrightness`, and start it.
+3. **Install**: download the latest version from [Releases](../../releases):
+   - `SamsungBrightness-x.y.z-setup.exe`: an installer for the current user (no administrator rights).
+     It can turn on "Start with Windows", adds a Start menu shortcut and has an uninstaller.
+   - `SamsungBrightness-x.y.z-portable.zip`: just the exe. Put it into any folder and start it.
+
+   The files are not code-signed, so Windows SmartScreen may warn on the first start.
+   Choose **More info → Run anyway**.
 4. **First start**: the app creates a `.env` settings file next to the exe and opens it.
    Enter the monitor IP address in `SAMSUNG_MONITOR_IP`, save the file, and choose
    **Reload settings** in the tray menu.
@@ -182,7 +187,22 @@ build.cmd
 ```
 
 The result is `build\SamsungBrightness.exe`. The C++ runtime is linked statically, so the exe
-needs no redistributable.
+needs no redistributable. Pass a version to embed it in the exe properties: `build.cmd 1.2.0`.
+
+### Continuous integration and releases
+
+[GitHub Actions](.github/workflows/build.yml) builds the exe, the installer ([Inno Setup](https://jrsoftware.org/isinfo.php),
+script in `installer/`) and the portable zip for every push and pull request. The files are attached to the
+workflow run as artifacts.
+
+To publish a release, push a version tag:
+
+```bat
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+The workflow then builds version 1.2.0 and creates a GitHub Release with the installer and the zip.
 
 Project layout:
 
@@ -201,6 +221,8 @@ Project layout:
 | `src/config.*`, `src/paths.*` | `.env` settings |
 | `src/autostart.*` | "Start with Windows" |
 | `src/pairing.*` | Getting an access token from the monitor |
+| `installer/SamsungBrightness.iss` | Inno Setup installer script |
+| `.github/workflows/build.yml` | CI build and release publishing |
 | `tools/make-icon.ps1` | Regenerates `resources/app.ico` with ImageMagick |
 
 ## Credits

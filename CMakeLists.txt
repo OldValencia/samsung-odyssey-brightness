@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(SamsungBrightness VERSION 1.0.0 LANGUAGES CXX RC)
+# Release builds pass the version from the git tag, e.g. -DAPP_VERSION=1.2.0.
+set(APP_VERSION "1.0.0" CACHE STRING "Application version (major.minor.patch)")
+
+project(SamsungBrightness VERSION ${APP_VERSION} LANGUAGES CXX RC)
+
+# version.h is used by the resource script for the version shown in the exe properties.
+configure_file(resources/version.h.in generated/version.h @ONLY)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,7 +38,7 @@ add_executable(SamsungBrightness WIN32
     resources/app.manifest
 )
 
-target_include_directories(SamsungBrightness PRIVATE src resources)
+target_include_directories(SamsungBrightness PRIVATE src resources ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 target_compile_definitions(SamsungBrightness PRIVATE
     UNICODE
