@@ -1,5 +1,6 @@
 #pragma once
 
+#include "brightness_scale.h"
 #include "brightness_worker.h"
 #include "config.h"
 #include "osd_window.h"
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 // Brightness logic on the UI thread: decides what to ask the worker and what to show on screen.
 //
@@ -42,12 +44,12 @@ public:
 
     int MaxValue() const
     {
-        return maxValue_;
+        return scale_.MaxValue();
     }
 
-    int StepSize() const
+    std::vector<int> Presets() const
     {
-        return step_;
+        return scale_.Presets();
     }
 
     std::wstring StatusText() const;
@@ -59,8 +61,7 @@ private:
 
     OsdWindow& osd_;
     std::unique_ptr<BrightnessWorker> worker_;
-    int maxValue_ = 50;
-    int step_ = 5;
+    BrightnessScale scale_;
 
     int value_ = -1;
     ULONGLONG valueTimestamp_ = 0;

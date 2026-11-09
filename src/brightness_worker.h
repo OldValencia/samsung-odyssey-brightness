@@ -1,5 +1,6 @@
 #pragma once
 
+#include "brightness_scale.h"
 #include "config.h"
 #include "samsung_client.h"
 
@@ -27,8 +28,8 @@ public:
     // Each method returns the id of the request; it comes back with the result.
     uint32_t RequestRefresh();
     uint32_t RequestSet(int value);
-    // Reads the current brightness from the monitor first and then changes it by delta.
-    uint32_t RequestStep(int delta);
+    // Reads the current brightness from the monitor first and then moves it by `steps` scale steps.
+    uint32_t RequestStep(int steps);
 
     std::wstring LastError() const;
 
@@ -36,22 +37,31 @@ private:
     // Everything requested since the worker last picked up work.
     struct PendingWork {
         bool refresh = false;
-        int stepDelta = 0;
+        int steps = 0;
         std::optional<int> absoluteValue;
         uint32_t requestId = 0;
 
         bool IsEmpty() const;
     };
 
+    // brightness_worker.cpp: the request queue
     uint32_t NotifyNewWorkLocked();
     void Run(std::stop_token stopToken);
-    std::optional<int> Execute(const PendingWork& work);
-    int Clamp(int value) const;
+
+    // brightness_transition.cpp: talking to the monitor
+    std::optional<int> Execute(const PendingWork& work, std::stop_token stopToken);
+    std::optional<int> MoveTo(int target, std::stop_token stopToken);
+    std::optional<int> SetAndRemember(int value);
+    bool WaitForNextFrame(std::stop_token stopToken);
 
     SamsungClient client_;
     std::wstring accessToken_;
-    int maxBrightness_;
+    BrightnessScale scale_;
+    bool smoothTransitions_;
     HWND resultWindow_;
+
+    // The last value the monitor reported. Used only on the worker thread.
+    std::optional<int> lastKnownValue_;
 
     mutable std::mutex mutex_;
     std::condition_variable_any workAvailable_;

@@ -16,6 +16,8 @@ constexpr wchar_t kMonitorIpKey[] = L"SAMSUNG_MONITOR_IP";
 constexpr wchar_t kMonitorPortKey[] = L"SAMSUNG_MONITOR_PORT";
 constexpr wchar_t kStepKey[] = L"BRIGHTNESS_STEP";
 constexpr wchar_t kMaxBrightnessKey[] = L"BRIGHTNESS_MAX";
+constexpr wchar_t kNonlinearStepsKey[] = L"NONLINEAR_STEPS";
+constexpr wchar_t kSmoothTransitionsKey[] = L"SMOOTH_TRANSITIONS";
 constexpr wchar_t kDebugLogKey[] = L"DEBUG_LOG";
 
 constexpr char kTemplate[] =
@@ -33,10 +35,18 @@ constexpr char kTemplate[] =
     "SAMSUNG_MONITOR_PORT=1516\n"
     "\n"
     "# How much one key press changes the brightness.\n"
+    "# With NONLINEAR_STEPS=1 it sets the number of steps instead: BRIGHTNESS_MAX / BRIGHTNESS_STEP.\n"
     "BRIGHTNESS_STEP=5\n"
     "\n"
     "# The highest brightness value the monitor accepts (50 on the Odyssey OLED G8).\n"
     "BRIGHTNESS_MAX=50\n"
+    "\n"
+    "# 1 = small steps at low brightness, where the eye notices changes most, larger steps near the maximum.\n"
+    "# 0 = every step changes the brightness by BRIGHTNESS_STEP.\n"
+    "NONLINEAR_STEPS=1\n"
+    "\n"
+    "# 1 = fade smoothly to the new brightness, 0 = change it at once.\n"
+    "SMOOTH_TRANSITIONS=1\n"
     "\n"
     "# Set to 1 to write samsung-brightness.log next to the exe.\n"
     "DEBUG_LOG=0\n";
@@ -140,6 +150,10 @@ void Apply(Config& config, const Entry& entry)
         config.step = ParseInt(entry.value, config.step, 1, 100);
     } else if (entry.key == kMaxBrightnessKey) {
         config.maxBrightness = ParseInt(entry.value, config.maxBrightness, 1, 100);
+    } else if (entry.key == kNonlinearStepsKey) {
+        config.nonlinearSteps = ParseBool(entry.value);
+    } else if (entry.key == kSmoothTransitionsKey) {
+        config.smoothTransitions = ParseBool(entry.value);
     } else if (entry.key == kDebugLogKey) {
         config.debugLog = ParseBool(entry.value);
     }

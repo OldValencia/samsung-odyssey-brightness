@@ -1,7 +1,5 @@
 #include "tray_menu.h"
 
-#include <algorithm>
-
 namespace {
 
 enum MenuId : UINT {
@@ -18,25 +16,15 @@ enum MenuId : UINT {
 };
 
 constexpr size_t kMaxErrorLength = 70;
-constexpr int kMaxPresets = 10;
 
-void AddPreset(HMENU menu, int value, int currentValue)
-{
-    auto flags = MF_STRING | (value == currentValue ? MF_CHECKED : 0u);
-    AppendMenuW(menu, flags, kSetValueBaseId + value, std::to_wstring(value).c_str());
-}
-
-// "Set brightness" submenu: 0, step, 2 * step, ..., max (at most about ten items).
 HMENU BuildPresetMenu(const TrayMenuState& state)
 {
     auto menu = CreatePopupMenu();
-    auto presetStep = std::max(state.step, (state.maxValue + kMaxPresets - 1) / kMaxPresets);
 
-    for (int value = 0; value < state.maxValue; value += presetStep) {
-        AddPreset(menu, value, state.currentValue);
+    for (auto value : state.presets) {
+        auto flags = MF_STRING | (value == state.currentValue ? MF_CHECKED : 0u);
+        AppendMenuW(menu, flags, kSetValueBaseId + value, std::to_wstring(value).c_str());
     }
-    AddPreset(menu, state.maxValue, state.currentValue);
-
     return menu;
 }
 

@@ -11,6 +11,8 @@ struct Config {
     std::wstring accessToken;
     int step = 5;
     int maxBrightness = 50;
+    bool nonlinearSteps = true;
+    bool smoothTransitions = true;
     bool debugLog = false;
 };
 

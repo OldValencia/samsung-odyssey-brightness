@@ -55,6 +55,8 @@ build.cmd [version]        rem e.g. build.cmd 1.2.0 -> build\SamsungBrightness.e
 | `app.*`, `app_menu.cpp` | Hidden main window: Raw Input, key auto-repeat, tray, settings, pairing. |
 | `brightness_controller.*` | UI-thread logic: optimistic OSD updates; re-reads the real value after 10 s idle. |
 | `brightness_worker.*` | Background thread for all network calls; merges queued requests (latest wins). Results return as `WM_APP_BRIGHTNESS_RESULT` with request ids, so stale results are ignored. |
+| `brightness_transition.cpp` | Worker part that talks to the monitor: smooth transitions in up to 6 requests (~100 ms each, mostly monitor latency); a newer request interrupts and continues from the current value. |
+| `brightness_scale.*` | Linear steps or a quadratic curve with the same number of steps (`0,1,2,5,8,13,18,25,32,41,50` for 50/5). Integer math on purpose: floating point once turned 25 into 24. Values between levels move to the nearest level in the key's direction. |
 | `samsung_client.*`, `json_rpc.*` | WinHTTP JSON-RPC client with keep-alive. |
 | `consumer_key_listener.*` | Standard HID brightness keys (Consumer page `0x0C`, usages `0x6F` / `0x70`). |
 | `logitech_key_listener.*` | Logitech HID++ keys diverted by Logi Options+ (see below). |
@@ -91,7 +93,10 @@ build.cmd [version]        rem e.g. build.cmd 1.2.0 -> build\SamsungBrightness.e
 - Set `DEBUG_LOG=1` in that `.env` (then restart or "Reload settings") to get
   `samsung-brightness.log` next to the exe: settings, requests, key events (consumer usages and
   Logitech CIDs). Turn it back off afterwards.
-- Test without a visible change: `SamsungBrightness.exe set <current value>`.
+- Test without a visible change: `SamsungBrightness.exe set <current value>`. Tests that change the
+  brightness (e.g. `up` then `down`) should restore the original value at the end.
+- Running `Remove-Item` in the same PowerShell call as `cmd.exe /c ...` gets blocked by the sandbox
+  ("system path '/c'"); run the build and file cleanup as separate calls.
 - Key presses need the owner. Ask them to press keys, then read the log.
 - Re-measure resource usage after notable changes (private working set, private bytes, idle CPU
   over 60 s) and update the "Resource usage" table in `README.md`.

@@ -20,6 +20,8 @@ add_executable(SamsungBrightness WIN32
     src/app_menu.cpp
     src/autostart.cpp
     src/brightness_controller.cpp
+    src/brightness_scale.cpp
+    src/brightness_transition.cpp
     src/brightness_worker.cpp
     src/command_line.cpp
     src/config.cpp

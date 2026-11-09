@@ -25,6 +25,9 @@ The monitor does **not** need internet access; LAN access is enough.
 
 - **Brightness keys**: works with the standard HID *Brightness Up / Down* keys of any keyboard.
   Holding a key repeats it.
+- **Gentle dimming**: brightness fades smoothly to the new level instead of jumping. The steps follow
+  a curve: small in the dark range, where the eye notices changes most, larger near the maximum
+  (`0, 1, 2, 5, 8, 13, 18, 25, 32, 41, 50` by default). Both can be turned off in the settings.
 - **On-screen display**: a Windows 11 style indicator shows the level after every change.
 - **Tray icon**: the tooltip shows the current brightness. Left-click shows the indicator.
   Right-click opens a menu with presets, autostart and settings.
@@ -100,8 +103,10 @@ after pressing a key.
 | `SAMSUNG_MONITOR_IP` | — | IP address of the monitor |
 | `SAMSUNG_ACCESS_TOKEN` | — | Filled in by pairing |
 | `SAMSUNG_MONITOR_PORT` | `1516` | Port of the IP Control server |
-| `BRIGHTNESS_STEP` | `5` | Change per key press |
+| `BRIGHTNESS_STEP` | `5` | Change per key press. With `NONLINEAR_STEPS=1` it sets the number of steps instead (`BRIGHTNESS_MAX / BRIGHTNESS_STEP`) |
 | `BRIGHTNESS_MAX` | `50` | Highest brightness the monitor accepts (50 on the Odyssey OLED G8) |
+| `NONLINEAR_STEPS` | `1` | `1`: steps follow a curve (small at low brightness). `0`: equal steps of `BRIGHTNESS_STEP` |
+| `SMOOTH_TRANSITIONS` | `1` | `1`: fade to the new level in a few small requests. `0`: change at once |
 | `DEBUG_LOG` | `0` | `1` writes `samsung-brightness.log` next to the exe |
 
 See [`.env.example`](.env.example). After editing the file, choose **Reload settings** in the tray menu.
@@ -212,6 +217,8 @@ Project layout:
 | `src/app.cpp`, `src/app_menu.cpp` | Hidden main window: message handling, keys, tray menu, settings, pairing |
 | `src/brightness_controller.*` | Brightness logic on the UI thread (optimistic updates, OSD) |
 | `src/brightness_worker.*` | Background thread for network calls, request merging |
+| `src/brightness_transition.cpp` | Smooth transitions (part of the worker) |
+| `src/brightness_scale.*` | Linear or curved brightness steps, tray presets |
 | `src/samsung_client.*` | Samsung IP Control client (WinHTTP) |
 | `src/json_rpc.*` | Minimal JSON-RPC helpers |
 | `src/consumer_key_listener.*` | Standard HID brightness keys (Raw Input) |

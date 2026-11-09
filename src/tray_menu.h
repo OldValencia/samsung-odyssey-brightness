@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <string>
+#include <vector>
 
 enum class MenuCommand {
     None,
@@ -30,8 +31,8 @@ struct TrayMenuState {
     std::wstring error;
     // -1 when unknown.
     int currentValue = -1;
-    int maxValue = 50;
-    int step = 5;
+    // Values of the "Set brightness" submenu.
+    std::vector<int> presets;
     bool autostartEnabled = false;
 };
 

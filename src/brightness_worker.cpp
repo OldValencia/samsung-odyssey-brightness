@@ -3,7 +3,6 @@
 #include "app_constants.h"
 #include "log.h"
 
-#include <algorithm>
 #include <atomic>
 #include <utility>
 
@@ -16,13 +15,14 @@ std::atomic<uint32_t> lastRequestId{0};
 
 bool BrightnessWorker::PendingWork::IsEmpty() const
 {
-    return !refresh && stepDelta == 0 && !absoluteValue;
+    return !refresh && steps == 0 && !absoluteValue;
 }
 
 BrightnessWorker::BrightnessWorker(const Config& config, HWND resultWindow)
     : client_(config.monitorIp, config.monitorPort),
       accessToken_(config.accessToken),
-      maxBrightness_(config.maxBrightness),
+      scale_(config.maxBrightness, config.step, config.nonlinearSteps),
+      smoothTransitions_(config.smoothTransitions),
       resultWindow_(resultWindow),
       thread_([this](std::stop_token stopToken) { Run(stopToken); })
 {
@@ -38,19 +38,19 @@ uint32_t BrightnessWorker::RequestRefresh()
 uint32_t BrightnessWorker::RequestSet(int value)
 {
     std::scoped_lock lock(mutex_);
-    pending_.absoluteValue = Clamp(value);
-    pending_.stepDelta = 0;
+    pending_.absoluteValue = scale_.Clamp(value);
+    pending_.steps = 0;
     return NotifyNewWorkLocked();
 }
 
-uint32_t BrightnessWorker::RequestStep(int delta)
+uint32_t BrightnessWorker::RequestStep(int steps)
 {
     std::scoped_lock lock(mutex_);
 
     if (pending_.absoluteValue) {
-        pending_.absoluteValue = Clamp(*pending_.absoluteValue + delta);
+        pending_.absoluteValue = scale_.Advance(*pending_.absoluteValue, steps);
     } else {
-        pending_.stepDelta += delta;
+        pending_.steps += steps;
     }
     return NotifyNewWorkLocked();
 }
@@ -82,7 +82,7 @@ void BrightnessWorker::Run(std::stop_token stopToken)
             work = std::exchange(pending_, PendingWork{});
         }
 
-        auto value = Execute(work);
+        auto value = Execute(work, stopToken);
 
         if (value) {
             logging::Write(L"Request %u: brightness is %d", work.requestId, *value);
@@ -92,29 +92,7 @@ void BrightnessWorker::Run(std::stop_token stopToken)
             logging::Write(L"Request %u failed: %ls", work.requestId, lastError_.c_str());
         }
 
+        // If a newer request interrupted a transition, this result is outdated and the UI ignores it.
         PostMessageW(resultWindow_, WM_APP_BRIGHTNESS_RESULT, work.requestId, value.value_or(-1));
     }
-}
-
-std::optional<int> BrightnessWorker::Execute(const PendingWork& work)
-{
-    if (work.absoluteValue) {
-        return client_.SetBrightness(accessToken_, *work.absoluteValue);
-    }
-
-    auto current = client_.GetBrightness(accessToken_);
-    if (!current || work.stepDelta == 0) {
-        return current;
-    }
-
-    auto target = Clamp(*current + work.stepDelta);
-    if (target == *current) {
-        return current;  // already at the limit
-    }
-    return client_.SetBrightness(accessToken_, target);
-}
-
-int BrightnessWorker::Clamp(int value) const
-{
-    return std::clamp(value, 0, maxBrightness_);
 }

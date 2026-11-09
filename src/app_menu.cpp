@@ -32,8 +32,7 @@ void App::ShowMenu()
     TrayMenuState state;
     state.status = brightness_.StatusText();
     state.currentValue = brightness_.Value();
-    state.maxValue = brightness_.MaxValue();
-    state.step = brightness_.StepSize();
+    state.presets = brightness_.Presets();
     state.autostartEnabled = autostart::IsEnabled();
 
     if (brightness_.Value() < 0) {
@@ -91,8 +90,9 @@ void App::LoadSettings()
     config_ = config::Load(envFile);
 
     logging::SetLogFile(config_.debugLog ? paths::LogFile() : std::filesystem::path());
-    logging::Write(L"Settings loaded: monitor %ls:%d, step %d, max %d", config_.monitorIp.c_str(),
-                   config_.monitorPort, config_.step, config_.maxBrightness);
+    logging::Write(L"Settings loaded: monitor %ls:%d, step %d, max %d, nonlinear %d, smooth %d",
+                   config_.monitorIp.c_str(), config_.monitorPort, config_.step, config_.maxBrightness,
+                   config_.nonlinearSteps, config_.smoothTransitions);
 
     brightness_.Configure(config_, window_);
     brightness_.Refresh(false);
