@@ -29,6 +29,11 @@ public:
         return lastError_;
     }
 
+    const std::wstring& ErrorSummary() const
+    {
+        return errorSummary_;
+    }
+
 private:
     struct HandleCloser {
         void operator()(HINTERNET handle) const
@@ -45,7 +50,9 @@ private:
     void SetUnexpectedResponseError(const std::string& response);
 
     std::wstring host_;
+    int port_;
     InternetHandle session_;
     InternetHandle connection_;
     std::wstring lastError_;
+    std::wstring errorSummary_;
 };

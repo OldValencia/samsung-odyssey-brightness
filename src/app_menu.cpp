@@ -95,7 +95,6 @@ void App::LoadSettings()
                    config_.nonlinearSteps, config_.smoothTransitions);
 
     brightness_.Configure(config_, window_);
-    brightness_.Refresh(false);
     UpdateTooltip();
 }
 
@@ -161,7 +160,14 @@ void App::OnPairingResult(PairingResult* rawResult)
         return;
     }
 
-    if (!config::SaveValue(paths::EnvFile(), config::kAccessTokenKey, result->text)) {
+    auto saved = config::SaveAccessToken(paths::EnvFile(), result->monitorIp, result->monitorPort, result->text);
+    if (saved == config::SaveTokenResult::EndpointChanged) {
+        ShowMessageBox(L"The monitor address changed during pairing. Reload settings and pair again.",
+                       MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    if (saved == config::SaveTokenResult::WriteFailed) {
         ShowMessageBox(L"Pairing worked, but the token could not be saved to .env.", MB_OK | MB_ICONWARNING);
         return;
     }

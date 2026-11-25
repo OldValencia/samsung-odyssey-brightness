@@ -17,8 +17,6 @@ constexpr int kReceiveTimeoutMs = 5000;
 // Pairing waits until the user accepts the prompt on the monitor.
 constexpr int kPairingTimeoutMs = 60000;
 
-constexpr size_t kMaxErrorSnippet = 200;
-
 // The monitor uses a self-signed certificate that Windows cannot verify (see README, "Security").
 constexpr DWORD kIgnoreCertificateErrors = SECURITY_FLAG_IGNORE_UNKNOWN_CA
     | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID
@@ -29,40 +27,37 @@ std::wstring DescribeWinHttpError(DWORD code)
 {
     switch (code) {
     case ERROR_WINHTTP_TIMEOUT:
-        return L"the monitor did not answer in time";
+        return L"Monitor timed out";
     case ERROR_WINHTTP_NAME_NOT_RESOLVED:
-        return L"the address could not be resolved";
+        return L"Address not found";
     case ERROR_WINHTTP_CANNOT_CONNECT:
-        return L"cannot connect: is the monitor on and IP Remote enabled?";
+        return L"Cannot connect";
     case ERROR_WINHTTP_CONNECTION_ERROR:
-        return L"the connection was reset";
+        return L"Connection reset";
     case ERROR_WINHTTP_SECURE_FAILURE:
-        return L"TLS handshake failed";
+        return L"TLS connection failed";
     case ERROR_WINHTTP_INVALID_SERVER_RESPONSE:
-        return L"invalid response";
+        return L"Invalid HTTP response";
     default:
-        return L"network error";
+        return L"Network error";
     }
 }
 
-std::string ReadResponseBody(HINTERNET request)
+std::optional<std::string> ReadResponseBody(HINTERNET request)
 {
     std::string body;
-    DWORD available = 0;
+    char buffer[4096];
 
-    while (WinHttpQueryDataAvailable(request, &available) && available > 0) {
-        auto offset = body.size();
-        body.resize(offset + available);
-
+    while (true) {
         DWORD read = 0;
-        if (!WinHttpReadData(request, body.data() + offset, available, &read)) {
-            body.resize(offset);
-            break;
+        if (!WinHttpReadData(request, buffer, sizeof(buffer), &read)) {
+            return std::nullopt;
         }
-        body.resize(offset + read);
+        if (read == 0) {
+            return body;
+        }
+        body.append(buffer, read);
     }
-
-    return body;
 }
 
 DWORD QueryStatusCode(HINTERNET request)
@@ -78,14 +73,19 @@ DWORD QueryStatusCode(HINTERNET request)
 }
 
 SamsungClient::SamsungClient(const std::wstring& host, int port)
-    : host_(host)
+    : host_(host), port_(port)
 {
     // The monitor is in the local network, so system proxy settings are ignored on purpose.
     session_.reset(WinHttpOpen(kUserAgent, WINHTTP_ACCESS_TYPE_NO_PROXY,
                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
 
-    if (session_ && !host_.empty()) {
-        connection_.reset(WinHttpConnect(session_.get(), host_.c_str(), static_cast<INTERNET_PORT>(port), 0));
+    if (!session_) {
+        SetWinHttpError(L"open a session");
+    } else if (!host_.empty()) {
+        connection_.reset(WinHttpConnect(session_.get(), host_.c_str(), static_cast<INTERNET_PORT>(port_), 0));
+        if (!connection_) {
+            SetWinHttpError(L"start a connection");
+        }
     }
 }
 
@@ -118,6 +118,7 @@ std::optional<std::wstring> SamsungClient::CreateAccessToken()
 std::optional<int> SamsungClient::CallBacklightControl(const std::wstring& accessToken, std::optional<int> newValue)
 {
     if (accessToken.empty()) {
+        errorSummary_ = L"Pair with monitor";
         lastError_ = L"SAMSUNG_ACCESS_TOKEN is empty. Use \"Pair with monitor...\" in the tray menu.";
         return std::nullopt;
     }
@@ -135,8 +136,9 @@ std::optional<int> SamsungClient::CallBacklightControl(const std::wstring& acces
     }
 
     auto brightness = json_rpc::FindInt(*response, "backlight");
-    if (!brightness) {
+    if (!brightness || *brightness < 0) {
         SetUnexpectedResponseError(*response);
+        return std::nullopt;
     }
     return brightness;
 }
@@ -144,11 +146,11 @@ std::optional<int> SamsungClient::CallBacklightControl(const std::wstring& acces
 std::optional<std::string> SamsungClient::Post(const std::string& body, int receiveTimeoutMs)
 {
     if (host_.empty()) {
+        errorSummary_ = L"Monitor IP missing";
         lastError_ = L"SAMSUNG_MONITOR_IP is empty in .env.";
         return std::nullopt;
     }
     if (!connection_) {
-        SetWinHttpError(L"start a connection");
         return std::nullopt;
     }
 
@@ -176,11 +178,20 @@ std::optional<std::string> SamsungClient::Post(const std::string& body, int rece
     }
 
     auto statusCode = QueryStatusCode(request.get());
-    auto response = ReadResponseBody(request.get());
+    if (statusCode == 0) {
+        SetWinHttpError(L"read the HTTP status");
+        return std::nullopt;
+    }
 
     if (statusCode != 200) {
         lastError_ = std::format(L"The monitor answered with HTTP {}.", statusCode);
+        errorSummary_ = statusCode == 401 || statusCode == 403
+            ? L"Access denied" : std::format(L"Monitor HTTP {}", statusCode);
         return std::nullopt;
+    }
+    auto response = ReadResponseBody(request.get());
+    if (!response) {
+        SetWinHttpError(L"read the answer");
     }
     return response;
 }
@@ -188,16 +199,20 @@ std::optional<std::string> SamsungClient::Post(const std::string& body, int rece
 void SamsungClient::SetWinHttpError(const wchar_t* action)
 {
     auto code = GetLastError();
-    lastError_ = std::format(L"Cannot {}: {} (WinHTTP error {}).", action, DescribeWinHttpError(code), code);
+    auto reason = DescribeWinHttpError(code);
+    auto endpoint = std::format(L"{}:{}", host_, port_);
+    errorSummary_ = std::format(L"{}\n{}", reason, endpoint);
+    lastError_ = std::format(L"{} at {} ({}. WinHTTP error {}).", reason, endpoint, action, code);
 }
 
 void SamsungClient::SetUnexpectedResponseError(const std::string& response)
 {
-    auto message = json_rpc::FindString(response, "message");
-
-    if (message) {
-        lastError_ = L"The monitor reported an error: " + FromUtf8(*message);
+    auto code = json_rpc::FindInt(response, "code");
+    if (code) {
+        lastError_ = std::format(L"The monitor reported JSON-RPC error {}.", *code);
+        errorSummary_ = std::format(L"Monitor error {}", *code);
     } else {
-        lastError_ = L"Unexpected answer from the monitor: " + FromUtf8(response.substr(0, kMaxErrorSnippet));
+        lastError_ = L"Unexpected answer from the monitor.";
+        errorSummary_ = L"Invalid monitor reply";
     }
 }

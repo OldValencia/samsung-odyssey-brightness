@@ -15,6 +15,8 @@ void StartPairing(HWND resultWindow, const std::wstring& monitorIp, int port)
 
         auto result = std::make_unique<PairingResult>();
         result->success = token.has_value();
+        result->monitorIp = monitorIp;
+        result->monitorPort = port;
         result->text = token ? *token : client.LastError();
 
         auto posted = PostMessageW(resultWindow, WM_APP_PAIRING_RESULT, 0, reinterpret_cast<LPARAM>(result.get()));

@@ -24,7 +24,7 @@ std::optional<int> BrightnessWorker::Execute(const PendingWork& work, std::stop_
     }
 
     // Refresh, or a step from a value that may be outdated: read the real value first.
-    auto current = client_.GetBrightness(accessToken_);
+    auto current = client_->GetBrightness(accessToken_);
     lastKnownValue_ = current;
 
     if (!current || work.steps == 0) {
@@ -37,6 +37,13 @@ std::optional<int> BrightnessWorker::Execute(const PendingWork& work, std::stop_
 // requests, like a fade. A newer request interrupts the fade and continues from where it is.
 std::optional<int> BrightnessWorker::MoveTo(int target, std::stop_token stopToken)
 {
+    {
+        std::scoped_lock lock(mutex_);
+        if (pendingConfig_ || stopToken.stop_requested()) {
+            return std::nullopt;
+        }
+    }
+
     if (!smoothTransitions_ || !lastKnownValue_ || *lastKnownValue_ == target) {
         return SetAndRemember(target);
     }
@@ -63,7 +70,7 @@ std::optional<int> BrightnessWorker::MoveTo(int target, std::stop_token stopToke
 
 std::optional<int> BrightnessWorker::SetAndRemember(int value)
 {
-    auto reported = client_.SetBrightness(accessToken_, value);
+    auto reported = client_->SetBrightness(accessToken_, value);
     logging::Write(L"Set %d -> %d", value, reported.value_or(-1));
 
     // After a failure the real value is unknown.

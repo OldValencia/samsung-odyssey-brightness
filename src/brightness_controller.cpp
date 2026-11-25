@@ -16,15 +16,15 @@ BrightnessController::BrightnessController(OsdWindow& osd)
 
 void BrightnessController::Configure(const Config& config, HWND resultWindow)
 {
-    // Stop the old worker before starting the new one.
-    worker_.reset();
-    worker_ = std::make_unique<BrightnessWorker>(config, resultWindow);
+    if (!worker_) {
+        worker_ = std::make_unique<BrightnessWorker>(resultWindow);
+    }
 
     scale_ = BrightnessScale(config.maxBrightness, config.step, config.nonlinearSteps);
     value_ = -1;
     valueTimestamp_ = 0;
     lastRequestFailed_ = false;
-    latestRequestId_ = 0;
+    latestRequestId_ = worker_->Configure(config);
     showResultOnOsd_ = false;
 }
 
@@ -37,7 +37,7 @@ void BrightnessController::Step(int direction)
 
     // The cached value may be outdated, so the worker reads the real one before changing it.
     showResultOnOsd_ = true;
-    latestRequestId_ = worker_->RequestStep(direction);
+    latestRequestId_ = worker_->RequestStep(direction, scale_);
 }
 
 void BrightnessController::Set(int value)
@@ -94,7 +94,7 @@ void BrightnessController::OnResult(uint32_t requestId, int value)
     showResultOnOsd_ = false;
 
     if (lastRequestFailed_) {
-        osd_.ShowMessage(L"Monitor is not reachable");
+        osd_.ShowMessage(worker_->ErrorSummary());
     } else {
         osd_.ShowLevel(value_, MaxValue());
     }
@@ -105,12 +105,12 @@ std::wstring BrightnessController::StatusText() const
     if (value_ >= 0) {
         return std::format(L"Brightness: {} / {}", value_, MaxValue());
     }
-    return lastRequestFailed_ ? L"Brightness: monitor not reachable" : L"Brightness: checking...";
+    return lastRequestFailed_ ? L"Brightness unavailable" : L"Brightness: checking...";
 }
 
 std::wstring BrightnessController::LastError() const
 {
-    return worker_ ? worker_->LastError() : std::wstring();
+    return lastRequestFailed_ ? worker_->LastError() : std::wstring();
 }
 
 bool BrightnessController::HasFreshValue() const

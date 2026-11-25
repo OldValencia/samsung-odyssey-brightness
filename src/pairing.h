@@ -6,6 +6,8 @@
 
 struct PairingResult {
     bool success = false;
+    std::wstring monitorIp;
+    int monitorPort = 0;
     // The new access token on success, otherwise the error message.
     std::wstring text;
 };

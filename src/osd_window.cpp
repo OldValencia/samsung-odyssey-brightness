@@ -286,7 +286,17 @@ void OsdWindow::Paint(HDC dc, const RECT& bounds) const
     auto textFont = CreateUiFont(kTextFont, Scale(kTextSize), FW_SEMIBOLD);
 
     if (!message_.empty()) {
-        DrawTextLine(dc, message_.c_str(), content, textFont.get(), palette.text, DT_LEFT);
+        auto lineBreak = message_.find(L'\n');
+        if (lineBreak == std::wstring::npos) {
+            DrawTextLine(dc, message_.c_str(), content, textFont.get(), palette.text, DT_LEFT);
+        } else {
+            auto title = content;
+            title.bottom = (content.top + content.bottom) / 2;
+            content.top = title.bottom;
+            DrawTextLine(dc, message_.substr(0, lineBreak).c_str(), title, textFont.get(), palette.text, DT_LEFT);
+            auto detailFont = CreateUiFont(kTextFont, Scale(kTextSize - 2), FW_NORMAL);
+            DrawTextLine(dc, message_.c_str() + lineBreak + 1, content, detailFont.get(), palette.text, DT_LEFT);
+        }
         return;
     }
 

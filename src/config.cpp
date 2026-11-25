@@ -14,6 +14,7 @@ namespace {
 
 constexpr wchar_t kMonitorIpKey[] = L"SAMSUNG_MONITOR_IP";
 constexpr wchar_t kMonitorPortKey[] = L"SAMSUNG_MONITOR_PORT";
+constexpr wchar_t kAccessTokenKey[] = L"SAMSUNG_ACCESS_TOKEN";
 constexpr wchar_t kStepKey[] = L"BRIGHTNESS_STEP";
 constexpr wchar_t kMaxBrightnessKey[] = L"BRIGHTNESS_MAX";
 constexpr wchar_t kNonlinearStepsKey[] = L"NONLINEAR_STEPS";
@@ -159,6 +160,21 @@ void Apply(Config& config, const Entry& entry)
     }
 }
 
+Config ParseConfig(const std::vector<std::string>& lines)
+{
+    Config config;
+
+    for (const auto& line : lines) {
+        auto entry = ParseEntry(line);
+        if (entry) {
+            Apply(config, *entry);
+        }
+    }
+
+    config.step = std::min(config.step, config.maxBrightness);
+    return config;
+}
+
 }
 
 bool CreateIfMissing(const std::filesystem::path& envFile)
@@ -174,37 +190,32 @@ bool CreateIfMissing(const std::filesystem::path& envFile)
 
 Config Load(const std::filesystem::path& envFile)
 {
-    Config config;
-
-    for (const auto& line : ReadLines(envFile)) {
-        auto entry = ParseEntry(line);
-        if (entry) {
-            Apply(config, *entry);
-        }
-    }
-
-    config.step = std::min(config.step, config.maxBrightness);
-    return config;
+    return ParseConfig(ReadLines(envFile));
 }
 
-bool SaveValue(const std::filesystem::path& envFile, std::wstring_view key, std::wstring_view value)
+SaveTokenResult SaveAccessToken(const std::filesystem::path& envFile, std::wstring_view monitorIp,
+                                int monitorPort, std::wstring_view token)
 {
     auto lines = ReadLines(envFile);
-    auto newLine = ToUtf8(std::wstring(key) + L"=" + std::wstring(value));
+    auto config = ParseConfig(lines);
+    if (config.monitorIp != monitorIp || config.monitorPort != monitorPort) {
+        return SaveTokenResult::EndpointChanged;
+    }
 
-    auto isTargetLine = [&](const std::string& line) {
+    auto newLine = ToUtf8(std::wstring(kAccessTokenKey) + L"=" + std::wstring(token));
+    auto isTokenLine = [](const std::string& line) {
         auto entry = ParseEntry(line);
-        return entry && entry->key == key;
+        return entry && entry->key == kAccessTokenKey;
     };
 
-    auto existing = std::find_if(lines.begin(), lines.end(), isTargetLine);
-    if (existing != lines.end()) {
+    auto existing = std::find_if(lines.rbegin(), lines.rend(), isTokenLine);
+    if (existing != lines.rend()) {
         *existing = newLine;
     } else {
         lines.push_back(newLine);
     }
 
-    return WriteLines(envFile, lines);
+    return WriteLines(envFile, lines) ? SaveTokenResult::Saved : SaveTokenResult::WriteFailed;
 }
 
 }

@@ -23,15 +23,17 @@
 // with wParam = request id and lParam = brightness (or -1 on failure).
 class BrightnessWorker {
 public:
-    BrightnessWorker(const Config& config, HWND resultWindow);
+    explicit BrightnessWorker(HWND resultWindow);
 
     // Each method returns the id of the request; it comes back with the result.
+    uint32_t Configure(const Config& config);
     uint32_t RequestRefresh();
     uint32_t RequestSet(int value);
     // Reads the current brightness from the monitor first and then moves it by `steps` scale steps.
-    uint32_t RequestStep(int steps);
+    uint32_t RequestStep(int steps, const BrightnessScale& scale);
 
     std::wstring LastError() const;
+    std::wstring ErrorSummary() const;
 
 private:
     // Everything requested since the worker last picked up work.
@@ -54,10 +56,10 @@ private:
     std::optional<int> SetAndRemember(int value);
     bool WaitForNextFrame(std::stop_token stopToken);
 
-    SamsungClient client_;
+    std::optional<SamsungClient> client_;
     std::wstring accessToken_;
     BrightnessScale scale_;
-    bool smoothTransitions_;
+    bool smoothTransitions_ = true;
     HWND resultWindow_;
 
     // The last value the monitor reported. Used only on the worker thread.
@@ -66,7 +68,9 @@ private:
     mutable std::mutex mutex_;
     std::condition_variable_any workAvailable_;
     PendingWork pending_;
+    std::optional<Config> pendingConfig_;
     std::wstring lastError_;
+    std::wstring errorSummary_;
 
     // Declared last: the thread starts after all other members are ready and stops before they are destroyed.
     std::jthread thread_;
