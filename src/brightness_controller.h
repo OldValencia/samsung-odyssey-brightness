@@ -22,7 +22,7 @@ public:
     explicit BrightnessController(OsdWindow& osd);
 
     // Applies new settings. Must be called before any other method.
-    void Configure(const Config& config, HWND resultWindow);
+    void Configure(const Config& config, HWND resultWindow, bool showConnectionError);
 
     // direction: +1 brighter, -1 darker.
     void Step(int direction);
@@ -30,6 +30,7 @@ public:
     void Refresh(bool showResultOnOsd);
     // Shows the last known value right away and refreshes it.
     void ShowCurrent();
+    void Preview();
     // Forget how fresh the cached value is (e.g. after the PC wakes up).
     void MarkStale();
 
@@ -56,6 +57,8 @@ public:
     std::wstring LastError() const;
 
 private:
+    enum class ResultDisplay { Silent, ErrorOnly, Always };
+
     bool HasFreshValue() const;
     void Remember(int value);
 
@@ -64,10 +67,11 @@ private:
     BrightnessScale scale_;
 
     int value_ = -1;
+    std::optional<int> pendingStepLevel_;
     ULONGLONG valueTimestamp_ = 0;
     bool lastRequestFailed_ = false;
 
     // Results of older requests are ignored, so the display never jumps back.
     uint32_t latestRequestId_ = 0;
-    bool showResultOnOsd_ = false;
+    ResultDisplay resultDisplay_ = ResultDisplay::Silent;
 };

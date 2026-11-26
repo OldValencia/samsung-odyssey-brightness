@@ -2,10 +2,13 @@
 
 #include "text.h"
 
+#include <windows.h>
+
 #include <algorithm>
 #include <cwchar>
 #include <fstream>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace config {
@@ -28,7 +31,7 @@ constexpr char kTemplate[] =
     "# Tip: reserve this address for the monitor in your router's DHCP settings.\n"
     "SAMSUNG_MONITOR_IP=\n"
     "\n"
-    "# Access token of the monitor. Use \"Pair with monitor...\" in the tray menu to fill it in.\n"
+    "# Access token of the monitor. Use Settings > Monitor > Pair with monitor... to fill it in.\n"
     "# Keep this file private: the token allows controlling the monitor.\n"
     "SAMSUNG_ACCESS_TOKEN=\n"
     "\n"
@@ -66,9 +69,12 @@ void RemoveUtf8Bom(std::string& line)
     }
 }
 
-std::vector<std::string> ReadLines(const std::filesystem::path& file)
+std::optional<std::vector<std::string>> ReadLines(const std::filesystem::path& file)
 {
     std::ifstream stream(file, std::ios::binary);
+    if (!stream) {
+        return std::nullopt;
+    }
     std::vector<std::string> lines;
     std::string line;
 
@@ -77,6 +83,9 @@ std::vector<std::string> ReadLines(const std::filesystem::path& file)
             line.pop_back();
         }
         lines.push_back(line);
+    }
+    if (!stream.eof() || stream.bad()) {
+        return std::nullopt;
     }
 
     if (!lines.empty()) {
@@ -87,12 +96,34 @@ std::vector<std::string> ReadLines(const std::filesystem::path& file)
 
 bool WriteLines(const std::filesystem::path& file, const std::vector<std::string>& lines)
 {
-    std::ofstream stream(file, std::ios::binary | std::ios::trunc);
-
+    std::string bytes;
     for (const auto& line : lines) {
-        stream << line << "\n";
+        bytes += line;
+        bytes += '\n';
     }
-    return stream.good();
+    if (bytes.size() > MAXDWORD) {
+        return false;
+    }
+
+    auto temporary = file;
+    temporary += L".tmp-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+    const auto handle = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    DWORD written = 0;
+    const auto size = static_cast<DWORD>(bytes.size());
+    const bool ready = WriteFile(handle, bytes.data(), size, &written, nullptr)
+        && written == size && FlushFileBuffers(handle);
+    CloseHandle(handle);
+    if (ready && ReplaceFileW(file.c_str(), temporary.c_str(), nullptr, 0, nullptr, nullptr)) {
+        return true;
+    }
+
+    DeleteFileW(temporary.c_str());
+    return false;
 }
 
 std::wstring StripQuotes(const std::wstring& value)
@@ -175,11 +206,39 @@ Config ParseConfig(const std::vector<std::string>& lines)
     return config;
 }
 
+std::wstring SettingText(std::wstring_view value)
+{
+    if (value.starts_with(L'"') || value.starts_with(L'\'') || Trim(std::wstring(value)) != value) {
+        return L"\"" + std::wstring(value) + L"\"";
+    }
+    return std::wstring(value);
+}
+
+std::wstring SettingText(int value)
+{
+    return std::to_wstring(value);
+}
+
+void SetEntry(std::vector<std::string>& lines, std::wstring_view key, std::wstring_view value)
+{
+    auto replacement = ToUtf8(std::wstring(key) + L"=" + std::wstring(value));
+    auto existing = std::find_if(lines.rbegin(), lines.rend(), [key](const std::string& line) {
+        auto entry = ParseEntry(line);
+        return entry && entry->key == key;
+    });
+    if (existing == lines.rend()) {
+        lines.push_back(std::move(replacement));
+    } else {
+        *existing = std::move(replacement);
+    }
+}
+
 }
 
 bool CreateIfMissing(const std::filesystem::path& envFile)
 {
-    if (std::filesystem::exists(envFile)) {
+    std::error_code error;
+    if (std::filesystem::exists(envFile, error) || error) {
         return false;
     }
 
@@ -190,32 +249,69 @@ bool CreateIfMissing(const std::filesystem::path& envFile)
 
 Config Load(const std::filesystem::path& envFile)
 {
-    return ParseConfig(ReadLines(envFile));
+    return TryLoad(envFile).value_or(Config{});
+}
+
+std::optional<Config> TryLoad(const std::filesystem::path& envFile)
+{
+    auto lines = ReadLines(envFile);
+    return lines ? std::optional(ParseConfig(*lines)) : std::nullopt;
+}
+
+SaveResult Save(const std::filesystem::path& envFile, const Config& original, const Config& edited)
+{
+    auto lines = ReadLines(envFile);
+    if (!lines) {
+        return SaveResult::WriteFailed;
+    }
+    const auto current = ParseConfig(*lines);
+    if (edited.accessToken != original.accessToken
+        && (current.monitorIp != original.monitorIp || current.monitorPort != original.monitorPort)) {
+        return SaveResult::ChangedOnDisk;
+    }
+    const auto step = edited.step != original.step ? edited.step : current.step;
+    const auto maximum = edited.maxBrightness != original.maxBrightness ? edited.maxBrightness : current.maxBrightness;
+    if (step > maximum) {
+        return SaveResult::ChangedOnDisk;
+    }
+
+    bool modified = false;
+    const auto apply = [&](std::wstring_view key, auto member) {
+        const auto& value = edited.*member;
+        if (value == original.*member || value == current.*member) {
+            return true;
+        }
+        if (current.*member != original.*member) {
+            return false;
+        }
+        SetEntry(*lines, key, SettingText(value));
+        modified = true;
+        return true;
+    };
+    if (!apply(kMonitorIpKey, &Config::monitorIp) || !apply(kMonitorPortKey, &Config::monitorPort)
+        || !apply(kAccessTokenKey, &Config::accessToken) || !apply(kStepKey, &Config::step)
+        || !apply(kMaxBrightnessKey, &Config::maxBrightness) || !apply(kNonlinearStepsKey, &Config::nonlinearSteps)
+        || !apply(kSmoothTransitionsKey, &Config::smoothTransitions) || !apply(kDebugLogKey, &Config::debugLog)) {
+        return SaveResult::ChangedOnDisk;
+    }
+
+    return !modified || WriteLines(envFile, *lines) ? SaveResult::Saved : SaveResult::WriteFailed;
 }
 
 SaveTokenResult SaveAccessToken(const std::filesystem::path& envFile, std::wstring_view monitorIp,
                                 int monitorPort, std::wstring_view token)
 {
     auto lines = ReadLines(envFile);
-    auto config = ParseConfig(lines);
+    if (!lines) {
+        return SaveTokenResult::WriteFailed;
+    }
+    auto config = ParseConfig(*lines);
     if (config.monitorIp != monitorIp || config.monitorPort != monitorPort) {
         return SaveTokenResult::EndpointChanged;
     }
 
-    auto newLine = ToUtf8(std::wstring(kAccessTokenKey) + L"=" + std::wstring(token));
-    auto isTokenLine = [](const std::string& line) {
-        auto entry = ParseEntry(line);
-        return entry && entry->key == kAccessTokenKey;
-    };
-
-    auto existing = std::find_if(lines.rbegin(), lines.rend(), isTokenLine);
-    if (existing != lines.rend()) {
-        *existing = newLine;
-    } else {
-        lines.push_back(newLine);
-    }
-
-    return WriteLines(envFile, lines) ? SaveTokenResult::Saved : SaveTokenResult::WriteFailed;
+    SetEntry(*lines, kAccessTokenKey, SettingText(token));
+    return WriteLines(envFile, *lines) ? SaveTokenResult::Saved : SaveTokenResult::WriteFailed;
 }
 
 }

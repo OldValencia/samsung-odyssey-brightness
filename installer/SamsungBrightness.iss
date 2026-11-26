@@ -6,7 +6,7 @@
 ; The installer works per user: no administrator rights, files go to %LOCALAPPDATA%\Programs.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.2.0"
 #endif
 
 #define AppName "Samsung Brightness"

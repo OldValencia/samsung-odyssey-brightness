@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -23,6 +24,12 @@ bool CreateIfMissing(const std::filesystem::path& envFile);
 
 // Missing or invalid values fall back to the defaults in Config.
 Config Load(const std::filesystem::path& envFile);
+std::optional<Config> TryLoad(const std::filesystem::path& envFile);
+
+enum class SaveResult { Saved, ChangedOnDisk, WriteFailed };
+
+// Saves the fields edited in the dialog against the latest file contents.
+SaveResult Save(const std::filesystem::path& envFile, const Config& original, const Config& edited);
 
 enum class SaveTokenResult { Saved, EndpointChanged, WriteFailed };
 

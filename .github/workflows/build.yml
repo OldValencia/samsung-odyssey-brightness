@@ -29,7 +29,11 @@ jobs:
                   throw "Release tags must look like v1.2.3, got '$env:GITHUB_REF_NAME'"
               }
           } else {
-              $version = '1.0.0'
+              $cmake = Get-Content CMakeLists.txt -Raw
+              if ($cmake -notmatch '(?m)^set\(APP_VERSION\s+"(?<version>\d+\.\d+\.\d+)"') {
+                  throw 'APP_VERSION is missing from CMakeLists.txt'
+              }
+              $version = $Matches.version
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 
@@ -53,7 +57,7 @@ jobs:
       - name: Build portable zip
         shell: pwsh
         run: |
-          $files = 'build\SamsungBrightness.exe', '.env.example', 'README.md', 'LICENSE'
+          $files = 'build\SamsungBrightness.exe', '.env.example', 'README.md', 'LICENSE', 'docs'
           Compress-Archive -Path $files -DestinationPath "dist\SamsungBrightness-${{ steps.version.outputs.version }}-portable.zip"
 
       - uses: actions/upload-artifact@v4

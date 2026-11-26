@@ -10,7 +10,7 @@ constexpr wchar_t kSingleInstanceMutex[] = L"Local\\SamsungBrightness.SingleInst
 
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
+int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int)
 {
     auto command = ParseCommandLine();
     if (!command) {

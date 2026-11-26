@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 # Release builds pass the version from the git tag, e.g. -DAPP_VERSION=1.2.0.
-set(APP_VERSION "1.0.0" CACHE STRING "Application version (major.minor.patch)")
+set(APP_VERSION "1.2.0" CACHE STRING "Application version (major.minor.patch)")
 
 project(SamsungBrightness VERSION ${APP_VERSION} LANGUAGES CXX RC)
 
@@ -29,10 +29,15 @@ add_executable(SamsungBrightness WIN32
     src/json_rpc.cpp
     src/log.cpp
     src/logitech_key_listener.cpp
+    src/osd_theme.cpp
     src/osd_window.cpp
     src/pairing.cpp
     src/paths.cpp
     src/samsung_client.cpp
+    src/settings_dialog.cpp
+    src/settings_pages.cpp
+    src/shortcut_dialog.cpp
+    src/shortcuts.cpp
     src/text.cpp
     src/tray_icon.cpp
     src/tray_menu.cpp
@@ -52,6 +57,7 @@ target_compile_definitions(SamsungBrightness PRIVATE
 target_compile_options(SamsungBrightness PRIVATE /W4 /permissive- /utf-8)
 
 target_link_libraries(SamsungBrightness PRIVATE
+    comctl32  # settings tabs, size slider and shortcut capture field
     winhttp   # HTTPS requests to the monitor
     hid       # parsing keyboard HID reports
     shcore    # per-monitor DPI

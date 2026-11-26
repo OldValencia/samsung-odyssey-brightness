@@ -7,11 +7,13 @@
 #include "consumer_key_listener.h"
 #include "logitech_key_listener.h"
 #include "osd_window.h"
+#include "shortcuts.h"
 #include "tray_icon.h"
 #include "tray_menu.h"
 
 #include <windows.h>
 
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -47,10 +49,28 @@ private:
     // Tray, settings and pairing (app_menu.cpp)
     void OnTrayEvent(UINT event);
     void ShowMenu();
-    void HandleMenuChoice(const MenuChoice& choice);
+    void HandleTrayCommand(TrayCommand command);
+    void ChangeOsdTheme(OsdTheme theme);
+    void ConfigureShortcut(BrightnessKey direction);
+    void ToggleBrightnessKeys();
+    void OpenAboutLink(const wchar_t* url);
     void UpdateTooltip();
-    void LoadSettings();
+    void LoadSettings(bool showConnectionError = false);
     void CheckSettings();
+    void ShowSettings();
+    static INT_PTR CALLBACK SettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
+    static INT_PTR CALLBACK SettingsPageProc(HWND page, UINT message, WPARAM wParam, LPARAM lParam);
+    enum SettingsPage { Monitor, Appearance, Keyboard, Application, About, PageCount };
+    void InitializeSettingsPages();
+    void SelectSettingsPage(int index);
+    void UpdateMonitorStatus();
+    void UpdateBrightnessPresets();
+    void UpdateAppearanceControls();
+    void UpdateKeyboardControls();
+    void ChangeOsdSize(UINT action);
+    bool HandleSettingsControl(HWND page, UINT control, UINT notification);
+    void SyncSettingsToken();
+    HWND DialogOwner() const { return settingsWindow_ ? settingsWindow_ : window_; }
     void OpenSettingsFile();
     void StartPairingFlow();
     void OnPairingResult(PairingResult* result);
@@ -58,10 +78,15 @@ private:
 
     HINSTANCE instance_;
     HWND window_ = nullptr;
+    HWND settingsWindow_ = nullptr;
+    std::array<HWND, PageCount> settingsPages_{};
+    int settingsTab_ = Monitor;
+    int savedOsdSize_ = kDefaultOsdSize;
     HICON icon_ = nullptr;
     UINT taskbarCreatedMessage_ = 0;
 
     Config config_;
+    Config settingsSnapshot_;
     OsdWindow osd_;
     BrightnessController brightness_;
     // Standard HID brightness keys of any keyboard.
@@ -70,6 +95,7 @@ private:
     LogitechKeyListener logitechKeys_;
     std::vector<BYTE> rawInputBuffer_;
     TrayIcon tray_;
+    Shortcuts shortcuts_;
 
     // The brightness key that is held down, for auto-repeat.
     std::optional<BrightnessKey> heldKey_;

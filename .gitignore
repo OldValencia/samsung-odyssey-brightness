@@ -6,6 +6,7 @@ out/
 
 # Personal settings and logs (the .env file contains the monitor access token)
 .env
+.env.tmp-*
 *.log
 
 # IDE settings

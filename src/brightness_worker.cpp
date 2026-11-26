@@ -56,6 +56,8 @@ uint32_t BrightnessWorker::RequestStep(int steps, const BrightnessScale& scale)
         pending_.absoluteValue = scale.Advance(*pending_.absoluteValue, steps);
     } else {
         pending_.steps += steps;
+        // Opposite steps can cancel out, but the newest request still needs a result.
+        pending_.refresh = true;
     }
     return NotifyNewWorkLocked();
 }

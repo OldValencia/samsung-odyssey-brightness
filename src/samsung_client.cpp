@@ -4,11 +4,13 @@
 #include "text.h"
 
 #include <format>
+#include <iterator>
 
 namespace {
 
 constexpr wchar_t kUserAgent[] = L"SamsungBrightness/1.0";
 constexpr wchar_t kRequestHeaders[] = L"Content-Type: application/json\r\nAccept: application/json\r\n";
+constexpr DWORD kRequestHeadersLength = static_cast<DWORD>(std::size(kRequestHeaders) - 1);
 
 constexpr int kResolveTimeoutMs = 2000;
 constexpr int kConnectTimeoutMs = 3000;
@@ -119,7 +121,7 @@ std::optional<int> SamsungClient::CallBacklightControl(const std::wstring& acces
 {
     if (accessToken.empty()) {
         errorSummary_ = L"Pair with monitor";
-        lastError_ = L"SAMSUNG_ACCESS_TOKEN is empty. Use \"Pair with monitor...\" in the tray menu.";
+        lastError_ = L"SAMSUNG_ACCESS_TOKEN is empty. Open Settings > Monitor > Pair with monitor...";
         return std::nullopt;
     }
 
@@ -168,7 +170,7 @@ std::optional<std::string> SamsungClient::Post(const std::string& body, int rece
     auto* data = const_cast<char*>(body.data());
     auto size = static_cast<DWORD>(body.size());
 
-    if (!WinHttpSendRequest(request.get(), kRequestHeaders, static_cast<DWORD>(-1L), data, size, size, 0)) {
+    if (!WinHttpSendRequest(request.get(), kRequestHeaders, kRequestHeadersLength, data, size, size, 0)) {
         SetWinHttpError(L"send the request");
         return std::nullopt;
     }

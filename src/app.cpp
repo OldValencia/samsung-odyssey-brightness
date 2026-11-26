@@ -31,6 +31,8 @@ bool App::Initialize()
     if (!CreateMainWindow() || !osd_.Create(instance_)) {
         return false;
     }
+    osd_.SetTheme(LoadOsdTheme());
+    osd_.SetSizePercent(LoadOsdSize());
 
     auto iconSize = GetSystemMetrics(SM_CXSMICON);
     icon_ = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
@@ -38,8 +40,9 @@ bool App::Initialize()
     tray_.Add(window_, icon_);
 
     // Settings first: they decide whether the key listeners log their findings.
-    LoadSettings();
+    LoadSettings(/*showConnectionError=*/true);
     RegisterKeyListeners();
+    shortcuts_.Load(window_);
     CheckSettings();
     return true;
 }
@@ -69,12 +72,16 @@ void App::Execute(const Command& command)
 
 int App::Run()
 {
-    MSG message;
-    while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+    MSG message{};
+    BOOL status;
+    while ((status = GetMessageW(&message, nullptr, 0, 0)) > 0) {
+        if (settingsWindow_ && IsDialogMessageW(settingsWindow_, &message)) {
+            continue;
+        }
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
-    return static_cast<int>(message.wParam);
+    return status == -1 ? 1 : static_cast<int>(message.wParam);
 }
 
 bool App::CreateMainWindow()
@@ -117,6 +124,11 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             OnRepeatTimer();
         }
         return 0;
+    case WM_HOTKEY:
+        if (auto key = shortcuts_.HandleHotkey(wParam, lParam)) {
+            StepFor(*key);
+        }
+        return 0;
     case WM_APP_BRIGHTNESS_RESULT:
         brightness_.OnResult(static_cast<uint32_t>(wParam), static_cast<int>(lParam));
         UpdateTooltip();
@@ -138,12 +150,14 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         OnPowerEvent(wParam);
         return TRUE;
     case WM_DESTROY:
+        shortcuts_.Unregister();
         tray_.Remove();
         PostQuitMessage(0);
         return 0;
     default:
         if (message == taskbarCreatedMessage_ && message != 0) {
             tray_.Restore();
+            UpdateTooltip();
             return 0;
         }
         break;
@@ -169,6 +183,13 @@ void App::OnRawInput(HRAWINPUT input)
         return;
     }
 
+    if (raw->header.dwType == RIM_TYPEKEYBOARD) {
+        if (auto key = shortcuts_.KeyboardInput(raw->data.keyboard)) {
+            StepFor(*key);
+        }
+        return;
+    }
+
     auto onKey = [this](BrightnessKey key, bool pressed) { OnBrightnessKey(key, pressed); };
     consumerKeys_.HandleInput(*raw, onKey);
     logitechKeys_.HandleInput(*raw, onKey);
@@ -176,12 +197,19 @@ void App::OnRawInput(HRAWINPUT input)
 
 void App::OnInputDeviceChange(WPARAM change, HANDLE device)
 {
+    if (change == GIDC_REMOVAL) {
+        shortcuts_.ResetKeyboard();
+    }
     consumerKeys_.HandleDeviceChange(change, device);
     logitechKeys_.HandleDeviceChange(change, device);
 }
 
 void App::OnBrightnessKey(BrightnessKey key, bool pressed)
 {
+    if (!shortcuts_.UseBrightnessKeys()) {
+        return;
+    }
+
     logging::Write(L"Brightness %ls key %ls", key == BrightnessKey::Up ? L"up" : L"down",
                    pressed ? L"pressed" : L"released");
 
